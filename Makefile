@@ -9,7 +9,11 @@ INCLUDES = -Iinclude $(PKG_CFLAGS)
 
 SRC = \
 	src/main.c \
-	src/procfs.c
+	src/plain.c \
+	src/ui.c \
+	src/procfs.c \
+	src/postgres.c \
+    src/metrics.c
 
 OBJ = $(SRC:.c=.o)
 

@@ -1,41 +1,45 @@
-#include <ncurses.h>
+#include <stdio.h>
+#include <string.h>
 
-#include "procfs.h"
-#include <unistd.h>
-#include <inttypes.h>
+#include "plain.h"
+#include "ui.h"
 
-int main(void)
+static void print_usage(const char *program)
 {
-    initscr();
+    printf("Usage: %s [--plain]\n", program);
+}
 
-    noecho();
+int main(int argc, char **argv)
+{
+    int plain_mode = 0;
 
-    cbreak();
+    for (int i = 1; i < argc; i++)
+    {
+        if (strcmp(argv[i], "--plain") == 0)
+        {
+            plain_mode = 1;
+        }
+        else if (strcmp(argv[i], "--help") == 0 ||
+                 strcmp(argv[i], "-h") == 0)
+        {
+            print_usage(argv[0]);
+            return 0;
+        }
+        else
+        {
+            fprintf(stderr,
+                    "Unknown option: %s\n",
+                    argv[i]);
 
-    uint64_t cpu;
-    uint64_t rss;
-    uint64_t rd;
-    uint64_t wr;
+            print_usage(argv[0]);
+            return 1;
+        }
+    }
 
-    procfs_read(getpid(),
-                &cpu,
-                &rss,
-                &rd,
-                &wr);
-
-    mvprintw(1,2,"pg_whoisactive");
-
-    mvprintw(3,2,"Current PID : %d",getpid());
-
-    mvprintw(4,2,"RSS         : %" PRIu64 " KB", rss);
-
-    mvprintw(5,2,"CPU ticks   : %" PRIu64, cpu);
-
-    refresh();
-
-    getch();
-
-    endwin();
+    if (plain_mode)
+        plain_run();
+    else
+        ui_run();
 
     return 0;
 }

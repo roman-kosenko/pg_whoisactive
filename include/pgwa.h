@@ -4,13 +4,15 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#define PGWA_MAX_QUERY   16384
-#define PGWA_MAX_USER    64
-#define PGWA_MAX_HOST    64
-#define PGWA_MAX_DB      64
-#define PGWA_MAX_APP     128
-#define PGWA_MAX_WAIT    64
-#define PGWA_MAX_ROWS    512
+#define PGWA_MAX_QUERY      16384
+#define PGWA_MAX_USER       64
+#define PGWA_MAX_HOST       64
+#define PGWA_MAX_DB         64
+#define PGWA_MAX_APP        128
+#define PGWA_MAX_WAIT       64
+#define PGWA_MAX_STARTED    32
+#define PGWA_MAX_ROWS       512
+#define PGWA_MAX_BLOCKERS   16
 
 typedef enum
 {
@@ -35,11 +37,17 @@ typedef struct
 
     char state[32];
 
+    /*
+     * Timestamp of the current/last query as reported
+     * by pg_stat_activity.query_start.
+     */
+    char query_start[PGWA_MAX_STARTED];
+
     char query[PGWA_MAX_QUERY];
 
     double runtime_sec;
 
-    double cpu_percent;
+    uint64_t cpu_ms;
 
     uint64_t rss_kb;
 
@@ -51,10 +59,14 @@ typedef struct
 
     pid_t blocker_pid;
 
+    pid_t blockers[PGWA_MAX_BLOCKERS];
+    int blocker_count;
+
     int cpu_valid;
     int io_valid;
 
 } pgwa_session;
+
 
 typedef struct
 {

@@ -9,6 +9,6 @@ int procfs_read(pid_t pid,
                 uint64_t *read_bytes,
                 uint64_t *write_bytes);
 
-int64_t procfs_now_ms(void);
+int64_t procfs_now_ns(void);
 
 #endif
