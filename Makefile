@@ -39,29 +39,36 @@ $(TARGET): $(OBJ)
 
 # Build a native Debian (.deb) package for easy apt installation
 deb: $(TARGET)
-	@echo "Creating Debian package structure..."
-	rm -rf $(PKG_DIR)
-	mkdir -p $(PKG_DIR)/DEBIAN
-	mkdir -p $(PKG_DIR)/usr/bin
+	@echo "Creating Debian package structure in /tmp..."
+	rm -rf /tmp/$(PKG_DIR)
+	mkdir -p /tmp/$(PKG_DIR)/DEBIAN
+	mkdir -p /tmp/$(PKG_DIR)/usr/bin
+	
+	@echo "Fixing control directory permissions..."
+	chmod 755 /tmp/$(PKG_DIR)/DEBIAN
 	
 	@echo "Copying binary executable..."
-	cp $(TARGET) $(PKG_DIR)/usr/bin/
+	cp $(TARGET) /tmp/$(PKG_DIR)/usr/bin/
+	chmod 755 /tmp/$(PKG_DIR)/usr/bin/$(TARGET)
 	
 	@echo "Generating control file..."
-	@echo "Package: $(PKG_NAME)" > $(PKG_DIR)/DEBIAN/control
-	@echo "Version: $(PKG_VER)" >> $(PKG_DIR)/DEBIAN/control
-	@echo "Section: utils" >> $(PKG_DIR)/DEBIAN/control
-	@echo "Priority: optional" >> $(PKG_DIR)/DEBIAN/control
-	@echo "Architecture: $(PKG_ARCH)" >> $(PKG_DIR)/DEBIAN/control
-	@echo "Depends: libpq5, libncursesw6, libtinfo6" >> $(PKG_DIR)/DEBIAN/control
-	@echo "Maintainer: Development Team <info@pg_whoisactive.org>" >> $(PKG_DIR)/DEBIAN/control
-	@echo "Description: Advanced PostgreSQL session monitor with real-time process metrics." >> $(PKG_DIR)/DEBIAN/control
+	@echo "Package: $(PKG_NAME)" > /tmp/$(PKG_DIR)/DEBIAN/control
+	@echo "Version: $(PKG_VER)" >> /tmp/$(PKG_DIR)/DEBIAN/control
+	@echo "Section: utils" >> /tmp/$(PKG_DIR)/DEBIAN/control
+	@echo "Priority: optional" >> /tmp/$(PKG_DIR)/DEBIAN/control
+	@echo "Architecture: $(PKG_ARCH)" >> /tmp/$(PKG_DIR)/DEBIAN/control
+	@echo "Depends: libpq5, libncursesw6, libtinfo6" >> /tmp/$(PKG_DIR)/DEBIAN/control
+	@echo "Maintainer: Development Team <info@pg_whoisactive.org>" >> /tmp/$(PKG_DIR)/DEBIAN/control
+	@echo "Description: Advanced PostgreSQL session monitor with real-time process metrics." >> /tmp/$(PKG_DIR)/DEBIAN/control
 	
 	@echo "Building the package using dpkg-deb..."
-	dpkg-deb --build $(PKG_DIR)
+	dpkg-deb --build /tmp/$(PKG_DIR)
+	
+	@echo "Moving the final package to the current directory..."
+	mv /tmp/$(PKG_DIR).deb ./
 	
 	@echo "Cleaning up temporary directories..."
-	rm -rf $(PKG_DIR)
+	rm -rf /tmp/$(PKG_DIR)
 	@echo "Debian package successfully created: $(PKG_DIR).deb"
 
 # Clean up built artifacts, object files, and packages
