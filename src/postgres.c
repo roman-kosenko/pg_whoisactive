@@ -63,14 +63,37 @@ static void parse_blockers(const char *text,
 }
 
 
-int postgres_connect(pgwa_pg_connection *pg)
+int postgres_connect(pgwa_pg_connection *pg, const char *port)
 {
     PGconn *conn;
+    char conninfo[256];
 
     if (pg == NULL)
         return -1;
 
-    conn = PQconnectdb("");
+    if (port != NULL && port[0] != '\0')
+    {
+        /* 
+         * Передаем директорию UNIX-сокетов вместо "localhost".
+         * Это позволяет подключаться к любому локальному порту (инстансу) 
+         * без ввода пароля через системную авторизацию peer/trust.
+         */
+        snprintf(conninfo, sizeof(conninfo), "host=/var/run/postgresql port=%s", port);
+        conn = PQconnectdb(conninfo);
+        
+        /* Если в вашей ОС сокеты лежат в /tmp (например, RedHat/CentOS), 
+           и подключение выше не удалось, пробуем путь /tmp */
+        if (PQstatus(conn) != CONNECTION_OK)
+        {
+            PQfinish(conn);
+            snprintf(conninfo, sizeof(conninfo), "host=/tmp port=%s", port);
+            conn = PQconnectdb(conninfo);
+        }
+    }
+    else
+    {
+        conn = PQconnectdb("");
+    }
 
     if (PQstatus(conn) != CONNECTION_OK)
     {
@@ -81,6 +104,11 @@ int postgres_connect(pgwa_pg_connection *pg)
         PQfinish(conn);
 
         return -1;
+    }
+
+    if (PQsetClientEncoding(conn, "UTF-8") != 0)
+    {
+        fprintf(stderr, "Warning: Could not set client encoding to UTF-8.\n");
     }
 
     pg->conn = conn;
@@ -102,7 +130,7 @@ void postgres_disconnect(pgwa_pg_connection *pg)
     pg->conn = NULL;
 }
 
-/* ДОБАВЛЕНО: Реальная отправка команд pg_cancel_backend и pg_terminate_backend в БД */
+/* Реальная отправка команд pg_cancel_backend и pg_terminate_backend в БД */
 int postgres_execute(pgwa_pg_connection *pg, const char *sql)
 {
     PGconn *conn;
@@ -123,6 +151,7 @@ int postgres_execute(pgwa_pg_connection *pg, const char *sql)
     PQclear(res);
     return 0;
 }
+
 int postgres_read_activity(pgwa_pg_connection *pg,
                            pgwa_session *sessions,
                            int max_sessions,
@@ -159,7 +188,7 @@ int postgres_read_activity(pgwa_pg_connection *pg,
         "        ELSE "
         "            COALESCE(EXTRACT(EPOCH FROM "
         "                (clock_timestamp() - state_change)), 0) "
-        "    END, "
+        "END, "
         "    COALESCE("
         "        to_char(query_start, "
         "                'YYYY-MM-DD HH24:MI:SS'), "

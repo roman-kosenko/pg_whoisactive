@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <libpq-fe.h>
 
 #include "pgwa.h"
 #include "postgres.h"
@@ -336,12 +337,12 @@ static void print_blocking_tree(int session_count)
         printf("(no blocking chains)\n");
 }
 
-void plain_run(void)
+void plain_run(const char *port)
 {
     pgwa_pg_connection pg = {0};
     int session_count = 0;
 
-    if (postgres_connect(&pg) != 0)
+    if (postgres_connect(&pg, port) != 0)
     {
         fprintf(stderr,
                 "Cannot connect to PostgreSQL\n");
@@ -364,7 +365,19 @@ void plain_run(void)
 
         printf("\033[2J\033[H");
 
-        printf("pg_whoisactive | Sessions: %d\n\n",
+        char *p_port = PQport((PGconn *)pg.conn);
+        char *p_db = PQdb((PGconn *)pg.conn);
+        char *p_user = PQuser((PGconn *)pg.conn);
+        int v_raw = PQserverVersion((PGconn *)pg.conn);
+        int v_maj = v_raw / 10000;
+        int v_min = (v_raw % 10000) / 100;
+
+        printf("pg_whoisactive | Server: port=%s db=%s user=%s v%d.%d | Sessions: %d\n\n",
+               p_port ? p_port : "-",
+               p_db ? p_db : "-",
+               p_user ? p_user : "-",
+               v_maj,
+               v_min,
                session_count);
 
         printf("%-6s %-10s %-8s %6s %8s %8s %6s %-20s %8s %7s %-10s %-18s  %s\n",
