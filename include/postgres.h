@@ -16,5 +16,5 @@ int postgres_read_activity(pgwa_pg_connection *pg,
                            pgwa_session *sessions,
                            int max_sessions,
                            int *session_count);
-
+int postgres_execute(pgwa_pg_connection *pg, const char *sql);
 #endif

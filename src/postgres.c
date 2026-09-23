@@ -102,7 +102,27 @@ void postgres_disconnect(pgwa_pg_connection *pg)
     pg->conn = NULL;
 }
 
+/* ДОБАВЛЕНО: Реальная отправка команд pg_cancel_backend и pg_terminate_backend в БД */
+int postgres_execute(pgwa_pg_connection *pg, const char *sql)
+{
+    PGconn *conn;
+    PGresult *res;
 
+    if (pg == NULL || pg->conn == NULL || sql == NULL)
+        return -1;
+
+    conn = (PGconn *)pg->conn;
+    res = PQexec(conn, sql);
+
+    if (PQresultStatus(res) != PGRES_TUPLES_OK && PQresultStatus(res) != PGRES_COMMAND_OK)
+    {
+        PQclear(res);
+        return -1;
+    }
+
+    PQclear(res);
+    return 0;
+}
 int postgres_read_activity(pgwa_pg_connection *pg,
                            pgwa_session *sessions,
                            int max_sessions,
