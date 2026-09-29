@@ -360,8 +360,8 @@ void plain_run(const char *port)
             break;
         }
 
-        metrics_update(sessions,
-                       session_count);
+        metrics_update(sessions, session_count);
+        metrics_update_tps(pg.total_xacts);
 
         printf("\033[2J\033[H");
 
@@ -372,12 +372,13 @@ void plain_run(const char *port)
         int v_maj = v_raw / 10000;
         int v_min = (v_raw % 10000) / 100;
 
-        printf("pg_whoisactive | Server: port=%s db=%s user=%s v%d.%d | Sessions: %d\n\n",
+        printf("pg_whoisactive | Server: port=%s db=%s user=%s v%d.%d | TPS: %.0f | Sessions: %d\n\n",
                p_port ? p_port : "-",
                p_db ? p_db : "-",
                p_user ? p_user : "-",
                v_maj,
                v_min,
+               metrics_get_tps(),
                session_count);
 
         printf("%-6s %-10s %-8s %6s %8s %8s %6s %-20s %8s %7s %-10s %-18s  %s\n",

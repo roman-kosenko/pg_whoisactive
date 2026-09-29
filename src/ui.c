@@ -20,27 +20,29 @@ static char current_sort = 't';
 static int filter_mode = 0;     
 static char filter_user[32] = "";
 
-#define COLOR_PAIR_DEFAULT 1
-#define COLOR_PAIR_ACTIVE  2
-#define COLOR_PAIR_ABORTED 3
-#define COLOR_PAIR_LOCK    4
-#define COLOR_PAIR_BLUE    5
+#define COLOR_PAIR_DEFAULT  1
+#define COLOR_PAIR_ACTIVE   2
+#define COLOR_PAIR_ABORTED  3
+#define COLOR_PAIR_LOCK     4
+#define COLOR_PAIR_BLUE     5
+#define COLOR_PAIR_SELECTED 6
 
+// Сетка координат таблицы процессов (dRSS сохранена, времена Xact/Query перенесены в панель)
 #define COL_PID        0
 #define COL_USER       8
 #define COL_DB         21
 #define COL_STATE      32
 #define COL_TIME       54
-#define COL_CPU        64   
-#define COL_READ       72   
-#define COL_WRITE      81   
-#define COL_RSS        91   
-#define COL_BLOCKER    100  
-#define COL_WAIT_TYPE  109  
-#define COL_WAIT_EVENT 120  
-#define COL_HOST       138  
- 
-
+#define COL_CPU        64   // Для CPU%
+#define COL_CPUMS      71   // Для CPUms
+#define COL_READ       80   
+#define COL_WRITE      89   
+#define COL_RSS        99   // Абсолютный RSS (ширина 8)
+#define COL_DRSS       108  // Изменение памяти ΔRSS (ширина 8)
+#define COL_BLOCKER    117  
+#define COL_WAIT_TYPE  126  
+#define COL_WAIT_EVENT 137  
+#define COL_HOST       155  
 static void draw_hline(int y, int width) {
     attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
     mvhline(y, 0, ACS_HLINE, width);
@@ -57,6 +59,47 @@ static void print_rate_at(int y, int x, double bytes_per_sec) {
         mvprintw(y, x, "%6.0f", bytes_per_sec);
 }
 
+static void print_delta_rss_at(int y, int x, int64_t delta_kb) {
+    if (delta_kb == 0) {
+        mvprintw(y, x, "%7s", "0M");
+        return;
+    }
+    char sign = (delta_kb > 0) ? '+' : '-';
+    uint64_t abs_kb = (delta_kb > 0) ? delta_kb : -delta_kb;
+    double bytes = (double)abs_kb * 1024.0;
+
+    if (bytes >= 1024.0 * 1024.0 * 1024.0)
+        mvprintw(y, x, "%c%5.1fG", sign, bytes / (1024.0 * 1024.0 * 1024.0));
+    else if (bytes >= 1024.0 * 1024.0)
+        mvprintw(y, x, "%c%5.1fM", sign, bytes / (1024.0 * 1024.0));
+    else if (bytes >= 1024.0)
+        mvprintw(y, x, "%c%5.0fK", sign, bytes / 1024.0);
+    else
+        mvprintw(y, x, "%c%5.0fB", sign, bytes);
+}
+
+// Умная функция форматирования возраста (дней, часов, минут, секунд) без лишнего мусора
+static void format_age_styled(char *buf, size_t max_len, double seconds_val) {
+    int64_t total_sec = (int64_t)seconds_val;
+    if (total_sec <= 0) {
+        snprintf(buf, max_len, "0s");
+        return;
+    }
+    int64_t days = total_sec / 86400;
+    int64_t hours = (total_sec % 86400) / 3600;
+    int64_t minutes = (total_sec % 3600) / 60;
+    int64_t secs = total_sec % 60;
+
+    if (days > 0)
+        snprintf(buf, max_len, "%ldd%ldh", days, hours);
+    else if (hours > 0)
+        snprintf(buf, max_len, "%ldh%ldm", hours, minutes);
+    else if (minutes > 0)
+        snprintf(buf, max_len, "%ldm%lds", minutes, secs);
+    else
+        snprintf(buf, max_len, "%lds", secs);
+}
+
 static const char *display_wait_type(const pgwa_session *s) {
     if (s->state[0] == '\0' || strcmp(s->state, "idle") == 0) return "";
     return s->wait_type;
@@ -71,14 +114,18 @@ static int compare_sessions(const void *a, const void *b) {
     const pgwa_session *sa = (const pgwa_session *)a;
     const pgwa_session *sb = (const pgwa_session *)b;
     switch (current_sort) {
-        case 'c': return (sb->cpu_ms > sa->cpu_ms) ? 1 : ((sb->cpu_ms < sa->cpu_ms) ? -1 : 0);
+        case 'c': 
+            if (sb->cpu_pct != sa->cpu_pct) return (sb->cpu_pct > sa->cpu_pct) ? 1 : -1;
+            return (sb->cpu_ms > sa->cpu_ms) ? 1 : ((sb->cpu_ms < sa->cpu_ms) ? -1 : 0);
+        case 'm': // Новая сортировка по изменению памяти (dRSS)
+            if (sb->rss_delta_kb != sa->rss_delta_kb) return (sb->rss_delta_kb > sa->rss_delta_kb) ? 1 : -1;
+            return (sb->rss_kb > sa->rss_kb) ? 1 : ((sb->rss_kb < sa->rss_kb) ? -1 : 0);
         case 'r': return (sb->read_per_sec > sa->read_per_sec) ? 1 : ((sb->read_per_sec < sa->read_per_sec) ? -1 : 0);
         case 'w': return (sb->write_per_sec > sa->write_per_sec) ? 1 : ((sb->write_per_sec < sa->write_per_sec) ? -1 : 0);
         case 'p': return (sa->pid - sb->pid);
         case 't': default: return (sb->runtime_sec > sa->runtime_sec) ? 1 : ((sb->runtime_sec < sa->runtime_sec) ? -1 : 0);
     }
 }
-
 static int apply_filter_and_sort(int total_count) {
     int count = 0;
     for (int i = 0; i < total_count; i++) {
@@ -91,6 +138,7 @@ static int apply_filter_and_sort(int total_count) {
     if (count > 0) qsort(filtered_sessions, count, sizeof(pgwa_session), compare_sessions);
     return count;
 }
+
 static pgwa_session *find_session(pid_t pid, int session_count) {
     for (int i = 0; i < session_count; i++) if (filtered_sessions[i].pid == pid) return &filtered_sessions[i];
     return NULL;
@@ -154,14 +202,10 @@ static int draw_blocking_tree(int y, int height, int width, int session_count) {
     if (!printed_tree) { mvprintw(y + 2, 0, " No blocking chains"); return 3; }
     return height;
 }
-
 static void draw_header(int width, int session_count, int total_count, pgwa_pg_connection *pg) {
     erase();
-    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_ACTIVE)); 
-    mvprintw(0, 0, " pg_whoisactive"); 
-    attroff(A_BOLD);
-    mvprintw(0, 16, "Monitor ");
-    attroff(COLOR_PAIR(COLOR_PAIR_ACTIVE));
+    attrset(COLOR_PAIR(COLOR_PAIR_ACTIVE)); 
+    mvprintw(0, 0, " ⚡pg_whoisactive "); 
     
     if (pg != NULL && pg->conn != NULL) {
         char *p_port = PQport((PGconn *)pg->conn);
@@ -171,89 +215,145 @@ static void draw_header(int width, int session_count, int total_count, pgwa_pg_c
         int v_maj = v_raw / 10000;
         int v_min = (v_raw % 10000) / 100;
         
-        /* ИСПРАВЛЕНИЕ: Теперь выводим и пользователя, и БД, и порт в едином стиле с plain-режимом */
-        attron(COLOR_PAIR(COLOR_PAIR_DEFAULT));
-        printw("[%s@%s:%s (v%d.%d)] ", 
-               p_user ? p_user : "-", 
-               p_db ? p_db : "-", 
-               p_port ? p_port : "-", 
-               v_maj, 
-               v_min);
-        attroff(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+        attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+        printw("[%s@%s:%s (v%d.%d)] ", p_user ? p_user : "-", p_db ? p_db : "-", p_port ? p_port : "-", v_maj, v_min);
     }
 
-    attron(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw("[Sort: "); attroff(COLOR_PAIR(COLOR_PAIR_DEFAULT));
-    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw("%c", current_sort); attroff(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE));
-    attron(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw("]"); attroff(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw("[Sort: "); 
+    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw("%c", current_sort); 
+    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw("] "); 
+
+    int cur_y, cur_x;
+    getyx(stdscr, cur_y, cur_x);
+    (void)cur_y; 
     
-    char label[32]; char value[32];
-    if (filter_mode == 0) {
-        snprintf(label, sizeof(label), "Sessions: ");
-        snprintf(value, sizeof(value), "%d", total_count);
-    } else {
-        snprintf(label, sizeof(label), "Filtered: ");
-        snprintf(value, sizeof(value), "%d/%d", session_count, total_count);
-    }
-    int total_len = (int)strlen(label) + (int)strlen(value);
-    
-    /* Немного сдвигаем координату X вправо, так как строка параметров стала длиннее */
-    int x = width - total_len - 1; if (x < 85) x = 85;
-    
-    attron(COLOR_PAIR(COLOR_PAIR_ACTIVE)); mvprintw(0, x, "%s", label); attroff(COLOR_PAIR(COLOR_PAIR_ACTIVE));
-    attron(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw("%s", value); attroff(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+    if (cur_x < 55) cur_x = 55;
+
+    metrics_info g_metrics = metrics_get_global();
+    char buf_pct[16];
+
+    attrset(COLOR_PAIR(COLOR_PAIR_ACTIVE)); mvprintw(0, cur_x, "Host CPU ");
+    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); snprintf(buf_pct, sizeof(buf_pct), "%.0f%%", g_metrics.host_cpu_pct);
+    printw("%-5s", buf_pct); cur_x += 15;
+
+    attrset(COLOR_PAIR(COLOR_PAIR_ACTIVE)); mvprintw(0, cur_x, "PG CPU ");
+    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); snprintf(buf_pct, sizeof(buf_pct), "%.0f%%", g_metrics.pg_cpu_pct);
+    printw("%-5s", buf_pct); cur_x += 13;
+
+    attrset(COLOR_PAIR(COLOR_PAIR_ACTIVE)); mvprintw(0, cur_x, "CPUs ");
+    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw("%-4d", g_metrics.cpu_cores); cur_x += 10;
+
+    attrset(COLOR_PAIR(COLOR_PAIR_ACTIVE)); mvprintw(0, cur_x, "TPS: ");
+    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw("%-6.0f", metrics_get_tps()); cur_x += 12;
+
+    int av_act_val = (pg != NULL) ? pg->av_active : 0;
+    int av_max_val = (pg != NULL && pg->av_max > 0) ? pg->av_max : 3;
+    int av_color_pair = COLOR_PAIR_ACTIVE; 
+    double av_usage_pct = ((double)av_act_val / (double)av_max_val) * 100.0;
+    if (av_usage_pct >= 75.0) av_color_pair = COLOR_PAIR_ABORTED; 
+    else if (av_usage_pct >= 50.0) av_color_pair = COLOR_PAIR_LOCK;    
+
+    attrset(COLOR_PAIR(av_color_pair)); mvprintw(0, cur_x, "AV ");
+    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); char str_av[32];
+    snprintf(str_av, sizeof(str_av), "%d/%d", av_act_val, av_max_val);
+    printw("%-7s", str_av); cur_x += 11;
+
+    attrset(COLOR_PAIR(COLOR_PAIR_ACTIVE)); mvprintw(0, cur_x, (filter_mode == 0) ? "Sessions: " : "Filtered: ");
+    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+    if (filter_mode == 0) printw("%-6d", total_count);
+    else { char str_sess[32]; snprintf(str_sess, sizeof(str_sess), "%d/%d", session_count, total_count); printw("%-7s", str_sess); }
+
     draw_hline(1, width);
 }
 
-
-
-
 static void draw_table_header(int y) {
-    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
-    attron(A_BOLD);
-    mvprintw(y, COL_PID,        "PID");  mvprintw(y, COL_USER,       "USER");
-    mvprintw(y, COL_DB,         "DB");   mvprintw(y, COL_STATE,      "STATE");
-    mvprintw(y, COL_TIME,       "TIME"); mvprintw(y, COL_CPU,        "CPUms");
-    mvprintw(y, COL_READ,       "READ/s");mvprintw(y, COL_WRITE,      "WRITE/s");
-    mvprintw(y, COL_RSS,        "RSS");  mvprintw(y, COL_BLOCKER,    "BLOCKER");
-    mvprintw(y, COL_WAIT_TYPE,  "WAIT_TYPE");mvprintw(y, COL_WAIT_EVENT, "WAIT_EVENT");
-    mvprintw(y, COL_HOST,       "HOST");
-    attroff(A_BOLD);
+    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); attron(A_BOLD);
+    mvprintw(y, COL_PID, "PID");  mvprintw(y, COL_USER, "USER");
+    mvprintw(y, COL_DB, "DB");   mvprintw(y, COL_STATE, "STATE");
+    mvprintw(y, COL_TIME, "TIME"); mvprintw(y, COL_CPU, "CPUs%%");
+    mvprintw(y, COL_CPUMS, "CPUms"); mvprintw(y, COL_READ, "READ/s"); 
+    mvprintw(y, COL_WRITE, "WRITE/s"); mvprintw(y, COL_RSS, "RSS");  
+    mvprintw(y, COL_DRSS, "dRSS"); mvprintw(y, COL_BLOCKER, "BLOCKER");
+    mvprintw(y, COL_WAIT_TYPE, "WAIT_TYPE"); mvprintw(y, COL_WAIT_EVENT, "WAIT_EVENT");
+    mvprintw(y, COL_HOST, "HOST"); attroff(A_BOLD);
 }
+#ifndef VERSION
+#define VERSION "dev"
+#endif
 
 static void draw_session_row(int y, int row, int width) {
     pgwa_session *s = &filtered_sessions[row];
-    int pair = COLOR_PAIR_DEFAULT;
-    int is_lock = 0;
+    int pair = COLOR_PAIR_DEFAULT; int is_lock = 0;
 
     if (strstr(s->state, "aborted") != NULL) pair = COLOR_PAIR_ABORTED;
     else if (strstr(s->wait_type, "Lock") != NULL || s->blocker_pid > 0) { pair = COLOR_PAIR_LOCK; is_lock = 1; }
     else if (strcmp(s->state, "active") == 0) pair = COLOR_PAIR_ACTIVE;
 
-    attrset(COLOR_PAIR(pair));
-    if (is_lock) attron(A_BOLD); 
-    if (row == selected_row) attron(A_REVERSE);
+    attrset(COLOR_PAIR(pair)); if (is_lock) attron(A_BOLD); if (row == selected_row) attron(A_REVERSE);
 
-    mvprintw(y, COL_PID, "%-7d", (int)s->pid);
-    mvprintw(y, COL_USER, "%-12.12s", s->user);
-    mvprintw(y, COL_DB, "%-10.10s", s->database);
+    static const int col_starts[] = {
+        COL_PID, COL_USER, COL_DB, COL_STATE, COL_TIME, COL_CPU, COL_CPUMS,
+        COL_READ, COL_WRITE, COL_RSS, COL_DRSS, COL_BLOCKER, COL_WAIT_TYPE, COL_WAIT_EVENT, COL_HOST
+    };
+    static const int col_widths[] = { 7, 12, 10, 21, 7, 6, 8, 8, 9, 8, 8, 8, 8, 10, 17, 32 };
+    const int ncols = (int)(sizeof(col_starts) / sizeof(col_starts[0]));
+
+    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); for (int c = 0; c < width; c++) mvaddch(y, c, ' ');
+    attrset(COLOR_PAIR(pair)); if (is_lock) attron(A_BOLD); if (row == selected_row) attron(A_REVERSE);
+
+    for (int i = 0; i < ncols; i++) {
+        int cs = col_starts[i], cw = col_widths[i]; if (cs >= width) break;
+        int ce = cs + cw; if (ce > width) ce = width;
+        for (int c = cs; c < ce; c++) mvaddch(y, c, ' ');
+    }
+
+    if (COL_PID < width) mvprintw(y, COL_PID, "%-7d", (int)s->pid);
+    if (COL_USER < width) mvprintw(y, COL_USER, "%-12.12s", s->user);
+    if (COL_DB < width) mvprintw(y, COL_DB, "%-10.10s", s->database);
     const char *state = (strcmp(s->state, "idle in transaction (aborted)") == 0) ? "idle in txn (aborted)" : s->state;
-    mvprintw(y, COL_STATE, "%-21.21s", state);
-    mvprintw(y, COL_TIME, "%7.0fs", s->runtime_sec);
-    mvprintw(y, COL_CPU, "%7llu", (unsigned long long)s->cpu_ms);
-    print_rate_at(y, COL_READ, s->read_per_sec);
-    print_rate_at(y, COL_WRITE, s->write_per_sec);
-    mvprintw(y, COL_RSS, "%5lluM", (unsigned long long)(s->rss_kb / 1024));
-    if (s->blocker_pid > 0) mvprintw(y, COL_BLOCKER, "%7d", (int)s->blocker_pid);
-    else mvprintw(y, COL_BLOCKER, "%7s", "");
-    mvprintw(y, COL_WAIT_TYPE, "%-10.10s", display_wait_type(s));
-    mvprintw(y, COL_WAIT_EVENT, "%-16.16s", display_wait_event(s));
-    mvprintw(y, COL_HOST, "%-32.32s", s->host);
+    if (COL_STATE < width) mvprintw(y, COL_STATE, "%-21.21s", state);
+    if (COL_TIME < width) mvprintw(y, COL_TIME, "%7.0fs", s->runtime_sec);
+    if (COL_CPU < width) mvprintw(y, COL_CPU, "%5.1f%%", s->cpu_pct);
+    if (COL_CPUMS < width) mvprintw(y, COL_CPUMS, "%7llu", (unsigned long long)s->cpu_ms); 
+    if (COL_READ < width) print_rate_at(y, COL_READ, s->read_per_sec);
+    if (COL_WRITE < width) print_rate_at(y, COL_WRITE, s->write_per_sec);
+    if (COL_RSS < width) mvprintw(y, COL_RSS, "%6lluM", (unsigned long long)(s->rss_kb / 1024));
+    
+    if (COL_DRSS < width) {
+        int reset_style = 0;
+        if (s->rss_delta_kb > 102400 && row != selected_row) { attron(COLOR_PAIR(COLOR_PAIR_LOCK) | A_BOLD); reset_style = 1; }
+        print_delta_rss_at(y, COL_DRSS, s->rss_delta_kb);
+        if (reset_style) { attrset(COLOR_PAIR(pair)); if (is_lock) attron(A_BOLD); if (row == selected_row) attron(A_REVERSE); }
+    }
 
-    int used = COL_HOST + 32;
-    while (used < width) { mvaddch(y, used, ' '); used++; }
-    attroff(A_REVERSE);
-    attroff(A_BOLD);
-    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+    if (COL_BLOCKER < width) {
+        if (s->blocker_pid > 0) mvprintw(y, COL_BLOCKER, "%7d", (int)s->blocker_pid);
+        else mvprintw(y, COL_BLOCKER, "%7s", "");
+    }
+    if (COL_WAIT_TYPE < width) mvprintw(y, COL_WAIT_TYPE, "%-10.10s", display_wait_type(s));
+    if (COL_WAIT_EVENT < width) mvprintw(y, COL_WAIT_EVENT, "%-16.16s", display_wait_event(s));
+    if (COL_HOST < width) mvprintw(y, COL_HOST, "%-32.32s", s->host);
+
+    attroff(A_REVERSE); attroff(A_BOLD); attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+}
+
+static void draw_footer(int y, int width) {
+    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); draw_hline(y, width); move(y + 1, 0);
+    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw(" Up/Down");   attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw(" Select Row  ");
+    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw("Sort:[t/c/m/r/w/p]"); attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw("  ");
+    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw("f");          attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw(" Filter  ");
+    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw("k");          attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw(" Kill/Cancel  ");
+    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw("PgUp/PgDn");   attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw(" Scroll Query  ");
+    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw("q");          attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw(" Quit");
+
+    // Динамический расчет длины строки версии для вывода строго по правому краю stdscr
+    char v_buf[32];
+    int v_len = snprintf(v_buf, sizeof(v_buf), "v:%s", VERSION);
+    int v_x = width - v_len;
+    if (v_x > 0) {
+        attrset(A_NORMAL); // Обычный базовый атрибут, без bold, без специального цвета
+        mvprintw(y + 1, v_x, "%s", v_buf);
+    }
 }
 static void draw_query_panel(int y, int height, int width, int session_count) {
     if (height <= 0) return;
@@ -273,102 +373,75 @@ static void draw_query_panel(int y, int height, int width, int session_count) {
     attron(COLOR_PAIR(COLOR_PAIR_ACTIVE)); printw("DB: ");     attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw("%-16.16s  ", s->database);
     attron(COLOR_PAIR(COLOR_PAIR_ACTIVE)); printw("Application: "); attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw("%-28.28s ", s->application);
     attron(COLOR_PAIR(COLOR_PAIR_ACTIVE)); printw("Host: ");   attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw("%-32.32s ", s->host);
+    
+    // Строка 3: Хронологический срез по 3-м типам возраста состояния
     move(y + 3, 0);
-    attron(COLOR_PAIR(COLOR_PAIR_ACTIVE)); printw(" Started: "); attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
-    printw("%s  ", (s->query_start[0] != '\0') ? (strlen(s->query_start) >= 8 ? s->query_start + strlen(s->query_start) - 8 : s->query_start) : "-");
-    attron(COLOR_PAIR(COLOR_PAIR_ACTIVE)); printw("Runtime: "); attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
-    int runtime = (int)s->runtime_sec; if (runtime < 0) runtime = 0;
-    printw("%02d:%02d:%02d  ", runtime / 3600, (runtime % 3600) / 60, runtime % 60);
-    attron(COLOR_PAIR(COLOR_PAIR_ACTIVE)); printw("State: "); attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
-    printw("%s", s->state[0] != '\0' ? s->state : "-");
+    char buf_age[32];
 
+    attron(COLOR_PAIR(COLOR_PAIR_ACTIVE)); printw(" Xact Age: "); 
+    if (s->xact_age_sec >= 3600.0) attron(COLOR_PAIR(COLOR_PAIR_LOCK) | A_BOLD);
+    else attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+    format_age_styled(buf_age, sizeof(buf_age), s->xact_age_sec);
+    printw("%-9s ", buf_age);
+
+    attron(COLOR_PAIR(COLOR_PAIR_ACTIVE)); printw("Query Age: "); attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+    format_age_styled(buf_age, sizeof(buf_age), s->query_age_sec);
+    printw("%-9s ", buf_age);
+
+    attron(COLOR_PAIR(COLOR_PAIR_ACTIVE)); printw("State Age: "); attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+    format_age_styled(buf_age, sizeof(buf_age), s->runtime_sec);
+    printw("%-9s ", buf_age);
+
+    attron(COLOR_PAIR(COLOR_PAIR_ACTIVE)); printw("State: "); 
+    if (strstr(s->state, "aborted") != NULL) attron(COLOR_PAIR(COLOR_PAIR_ABORTED) | A_BOLD);
+    else attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+    printw("%s", (s->state[0] != '\0') ? s->state : "-");
 
     int query_y = y + 4, max_query_lines = height - 4; if (max_query_lines <= 0) return;
 
-    size_t wlen = mbstowcs(NULL, s->query, 0);
-    if (wlen == (size_t)-1) return; 
-
-    wchar_t *wquery = malloc((wlen + 1) * sizeof(wchar_t));
-    if (!wquery) return;
+    size_t wlen = mbstowcs(NULL, s->query, 0); if (wlen == (size_t)-1) return; 
+    wchar_t *wquery = malloc((wlen + 1) * sizeof(wchar_t)); if (!wquery) return;
     mbstowcs(wquery, s->query, wlen + 1);
 
-    const wchar_t *p = wquery; 
-    int skipped = 0;
-    
+    const wchar_t *p = wquery; int skipped = 0;
     if (query_scroll > 0) {
         int temp_col = 1;
         while (*p && skipped < query_scroll) {
             wchar_t wc = *p++; if (wc == L'\r') continue;
             if (wc == L'\n') { skipped++; temp_col = 1; continue; }
             if (wc == L'\t') wc = L' ';
-            
-            int w = wcwidth(wc);
-            if (w < 0) w = 1;
+            int w = wcwidth(wc); if (w < 0) w = 1;
             if (temp_col + w >= width - 1) { skipped++; temp_col = 1; }
             temp_col += w;
         }
     }
 
-    int row = 0, col = 1;
-    int is_comment = 0; 
-    move(query_y + row, col);
-
+    int row = 0, col = 1, is_comment = 0; move(query_y + row, col);
     while (*p && row < max_query_lines) {
-        if (col == 1 || is_comment == 0) { 
-            if (*p == L'-' && *(p + 1) == L'-') is_comment = 1; 
-        }
+        if (col == 1 || is_comment == 0) { if (*p == L'-' && *(p + 1) == L'-') is_comment = 1; }
         wchar_t wc = *p++; if (wc == L'\r') continue;
         if (wc == L'\n') {
             is_comment = 0; row++; if (row >= max_query_lines) break;
             move(query_y + row, 1); col = 1; continue;
         }
         if (wc == L'\t') wc = L' ';
+        int w = wcwidth(wc); if (w < 0) w = 1;
+        if (col + w >= width - 1) { row++; if (row >= max_query_lines) break; move(query_y + row, 1); col = 1; }
 
-        int w = wcwidth(wc);
-        if (w < 0) w = 1;
-
-        if (col + w >= width - 1) { 
-            row++; 
-            if (row >= max_query_lines) break; 
-            move(query_y + row, 1); col = 1; 
-        }
-
-        if (is_comment) { 
-            attrset(COLOR_PAIR(COLOR_PAIR_ACTIVE) | A_BOLD); 
-        } 
+        if (is_comment) { attrset(COLOR_PAIR(COLOR_PAIR_ACTIVE) | A_BOLD); } 
         else {
             const wchar_t *kw[] = {L"SELECT", L"INSERT", L"UPDATE", L"DELETE", L"DO", L"DECLARE", L"BEGIN", L"END", L"$$"};
-            int is_keyword = 0;
-            
-            /* ИСПРАВЛЕНИЕ: Корректный расчет количества элементов через kw[0] */
-            size_t num_keywords = sizeof(kw) / sizeof(kw[0]);
+            int is_keyword = 0; size_t num_keywords = sizeof(kw) / sizeof(kw[0]);
             for (size_t k = 0; k < num_keywords; k++) {
-                size_t len = wcslen(kw[k]); 
-                if (wcsncmp(p - 1, kw[k], len) == 0) { is_keyword = 1; break; }
+                size_t len = wcslen(kw[k]); if (wcsncmp(p - 1, kw[k], len) == 0) { is_keyword = 1; break; }
             }
             if (is_keyword || wc == L'$') attrset(COLOR_PAIR(COLOR_PAIR_LOCK) | A_BOLD); 
             else attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); 
         }
-        
-        /* ИСПРАВЛЕНИЕ: Выделяем временную строку в отдельную переменную, чтобы не путать макрос ncurses */
-        wchar_t wstr[2] = { wc, L'\0' };
-        mvaddwstr(query_y + row, col, wstr); 
-        col += w;
+        wchar_t wstr[] = { wc, L'\0' }; mvaddwstr(query_y + row, col, wstr); col += w;
     }
-    
-    free(wquery);
-    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+    free(wquery); attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
 }
-static void draw_footer(int y, int width) {
-    attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); draw_hline(y, width); move(y + 1, 0);
-    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw(" Up/Down");   attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw(" Select Row  ");
-    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw("Sort:[t/c/r/w/p]"); attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw("  ");
-    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw("f");          attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw(" Filter  ");
-    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw("k");          attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw(" Kill/Cancel  ");
-    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw("PgUp/PgDn");   attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw(" Scroll Query  ");
-    attron(A_BOLD | COLOR_PAIR(COLOR_PAIR_BLUE)); printw("q");          attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT)); printw(" Quit");
-}
-
 static void normalize_selection(int session_count, int visible_rows) {
     if (session_count <= 0) { selected_row = 0; top_row = 0; return; }
     if (selected_row >= session_count) selected_row = session_count - 1;
@@ -395,25 +468,19 @@ static void handle_filter_menu(int width, int height) {
 }
 
 static void handle_kill_menu(int width, int height, pgwa_pg_connection *pg) {
-    (void)width;
-    if (filtered_sessions[selected_row].pid <= 0) return;
+    (void)width; if (filtered_sessions[selected_row].pid <= 0) return;
     pid_t target_pid = filtered_sessions[selected_row].pid;
-    timeout(-1); 
-    attrset(COLOR_PAIR(COLOR_PAIR_ABORTED)); attron(A_BOLD);
+    timeout(-1); attrset(COLOR_PAIR(COLOR_PAIR_ABORTED)); attron(A_BOLD);
     move(height - 1, 0); for (int i = 0; i < width; i++) mvaddch(height - 1, i, ' ');
     mvprintw(height - 1, 0, "TARGET PID %d. Actions: c:Cancel backend, k:Kill/Terminate. Choice: ", (int)target_pid); attroff(A_BOLD);
     refresh();
     
-    int action = getch();
-    char query[256]; /* ИСПРАВЛЕНИЕ: Выделен корректный размер буфера строки */
-    
+    int action = getch(); char query[256]; 
     if (action == 'c' || action == 'C') {
         move(height - 1, 0); for (int i = 0; i < width; i++) mvaddch(height - 1, i, ' ');
         snprintf(query, sizeof(query), "SELECT pg_cancel_backend(%d);", (int)target_pid);
         postgres_execute(pg, query);
-        
-        mvprintw(height - 1, 0, "Sent pg_cancel_backend(%d). Press any key to continue... ", (int)target_pid); 
-        refresh(); getch();
+        mvprintw(height - 1, 0, "Sent pg_cancel_backend(%d). Press any key to continue... ", (int)target_pid); refresh(); getch();
     } else if (action == 'k' || action == 'K') {
         move(height - 1, 0); for (int i = 0; i < width; i++) mvaddch(height - 1, i, ' ');
         mvprintw(height - 1, 0, "ARE YOU SURE to terminate PID %d? (y/n): ", (int)target_pid);
@@ -422,9 +489,7 @@ static void handle_kill_menu(int width, int height, pgwa_pg_connection *pg) {
             move(height - 1, 0); for (int i = 0; i < width; i++) mvaddch(height - 1, i, ' ');
             snprintf(query, sizeof(query), "SELECT pg_terminate_backend(%d);", (int)target_pid);
             postgres_execute(pg, query);
-            
-            mvprintw(height - 1, 0, "Sent pg_terminate_backend(%d). Press any key to continue... ", (int)target_pid); 
-            refresh(); getch();
+            mvprintw(height - 1, 0, "Sent pg_terminate_backend(%d). Press any key to continue... ", (int)target_pid); refresh(); getch();
         }
     }
     timeout(1000); 
@@ -438,7 +503,7 @@ static int handle_key(int key, int session_count, int width, int height, pgwa_pg
         case KEY_PPAGE: if (query_scroll >= 5) query_scroll -= 5; else query_scroll = 0; break;
         case KEY_NPAGE: query_scroll += 5; break;
         case KEY_HOME: query_scroll = 0; break;
-        case 't': case 'c': case 'r': case 'w': case 'p': current_sort = key; break;
+        case 't': case 'c': case 'm': case 'r': case 'w': case 'p': current_sort = key; break;
         case 'f': case 'F': handle_filter_menu(width, height); break;
         case 'k': case 'K': handle_kill_menu(width, height, pg); break;
         case 'q': case 'Q': return 1;
@@ -447,35 +512,32 @@ static int handle_key(int key, int session_count, int width, int height, pgwa_pg
     return 0;
 }
 
-/* Изменяем объявление функции, чтобы она принимала указатель на строку порта */
 void ui_run(const char *port) {
     pgwa_pg_connection pg = {0}; int total_count = 0;
-    
     setlocale(LC_ALL, "");
-
-    /* Передаем порт в функцию подключения */
     if (postgres_connect(&pg, port) != 0) { fprintf(stderr, "Cannot connect to PostgreSQL\n"); return; }
-    
     initscr(); cbreak(); noecho(); keypad(stdscr, TRUE); curs_set(0); timeout(1000);
 
     if (has_colors()) {
         start_color();
-        init_pair(COLOR_PAIR_DEFAULT, COLOR_WHITE,   COLOR_BLACK);
-        init_pair(COLOR_PAIR_ACTIVE,  COLOR_GREEN,   COLOR_BLACK);
-        init_pair(COLOR_PAIR_ABORTED, COLOR_RED,     COLOR_BLACK);
-        init_pair(COLOR_PAIR_LOCK,    COLOR_YELLOW,  COLOR_BLACK);
-        init_pair(COLOR_PAIR_BLUE,    COLOR_CYAN,    COLOR_BLACK);
+        init_pair(COLOR_PAIR_DEFAULT,  COLOR_WHITE,   COLOR_BLACK);
+        init_pair(COLOR_PAIR_ACTIVE,   COLOR_GREEN,   COLOR_BLACK);
+        init_pair(COLOR_PAIR_ABORTED,  COLOR_RED,     COLOR_BLACK);
+        init_pair(COLOR_PAIR_LOCK,     COLOR_YELLOW,  COLOR_BLACK);
+        init_pair(COLOR_PAIR_BLUE,     COLOR_CYAN,    COLOR_BLACK);
+        init_pair(COLOR_PAIR_SELECTED, COLOR_BLACK,   COLOR_CYAN);
     }
     while (1) {
         int height, width; getmaxyx(stdscr, height, width);
         if (height < 18 || width < 120) {
             erase(); attron(A_BOLD); mvprintw(0, 0, "pg_whoisactive"); attroff(A_BOLD);
             mvprintw(2, 0, "Terminal is too small. Minimum size: 120x18"); refresh();
-            int key = getch(); if (key == 'q' || key == 'Q') break;
-            continue;
+            int key = getch(); if (key == 'q' || key == 'Q') break; continue;
         }
         if (postgres_read_activity(&pg, sessions, PGWA_MAX_ROWS, &total_count) != 0) break;
         metrics_update(sessions, total_count);
+        metrics_update_tps(pg.total_xacts);
+        
         int session_count = apply_filter_and_sort(total_count);
         int footer_y = height - 2, query_height = 10, query_y = footer_y - query_height;
         int tree_y = query_y - 8, table_y = 2, table_height = tree_y - table_y;
@@ -485,10 +547,18 @@ void ui_run(const char *port) {
         draw_table_header(table_y);
         int visible_rows = table_height - 1; if (visible_rows < 0) visible_rows = 0;
         normalize_selection(session_count, visible_rows);
+
+        attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+        for (int i = 0; i < visible_rows; i++) { for (int c = 0; c < width; c++) mvaddch(table_y + 1 + i, c, ' '); }
+        int last_drawn = -1;
         for (int i = 0; i < visible_rows; i++) {
             int idx = top_row + i; if (idx >= session_count) break;
-            draw_session_row(table_y + 1 + i, idx, width);
+            draw_session_row(table_y + 1 + i, idx, width); last_drawn = i;
         }
+        attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+        for (int i = last_drawn + 1; i < visible_rows; i++) { for (int c = 0; c < width; c++) mvaddch(table_y + 1 + i, c, ' '); }
+        attroff(A_BOLD | A_REVERSE);
+
         draw_blocking_tree(tree_y, 8, width, session_count);
         draw_query_panel(query_y, query_height, width, session_count);
         draw_footer(footer_y, width);

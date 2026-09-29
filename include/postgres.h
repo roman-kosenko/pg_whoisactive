@@ -6,12 +6,13 @@
 typedef struct
 {
     void *conn;
+    uint64_t total_xacts;
+    int av_active;       
+    int av_max;          
 } pgwa_pg_connection;
 
 int postgres_connect(pgwa_pg_connection *pg, const char *port);
-
 void postgres_disconnect(pgwa_pg_connection *pg);
-
 int postgres_read_activity(pgwa_pg_connection *pg,
                            pgwa_session *sessions,
                            int max_sessions,

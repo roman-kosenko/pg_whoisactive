@@ -35,7 +35,7 @@ typedef struct
     char wait_type[PGWA_MAX_WAIT];
     char wait_event[PGWA_MAX_WAIT];
 
-    char state[32];
+    char state[32]; 
 
     /*
      * Timestamp of the current/last query as reported
@@ -45,11 +45,15 @@ typedef struct
 
     char query[PGWA_MAX_QUERY];
 
-    double runtime_sec;
+    double runtime_sec; 
+    double xact_age_sec;  // Новое поле: возраст текущей транзакции
+    double query_age_sec; // Новое поле: возраст текущего запроса
 
     uint64_t cpu_ms;
+    double cpu_pct;
 
     uint64_t rss_kb;
+    int64_t rss_delta_kb;
 
     uint64_t read_bytes;
     uint64_t write_bytes;
@@ -67,13 +71,11 @@ typedef struct
 
 } pgwa_session;
 
-
 typedef struct
 {
     pid_t pid;
 
     uint64_t cpu_ticks;
-
     uint64_t read_bytes;
     uint64_t write_bytes;
 

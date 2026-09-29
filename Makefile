@@ -1,6 +1,9 @@
 CC = gcc
 
-CFLAGS = -std=c17 -O2 -Wall -Wextra -pedantic
+# Единый источник версии приложения
+VERSION = 1.3.1
+
+CFLAGS = -std=c17 -O2 -Wall -Wextra -pedantic -DVERSION=\"$(VERSION)\"
 
 # Use ncursesw instead of ncurses to enable wide-character (UTF-8) support
 PKG_CFLAGS := $(shell pkg-config --cflags libpq ncursesw)
@@ -22,7 +25,7 @@ TARGET = pg_whoisactive
 
 # Package metadata variables for Debian package building
 PKG_NAME = pg-whoisactive
-PKG_VER  = 1.2.1
+PKG_VER  = $(VERSION)
 PKG_ARCH = amd64
 PKG_DIR  = $(PKG_NAME)_$(PKG_VER)_$(PKG_ARCH)
 

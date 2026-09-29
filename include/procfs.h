@@ -11,4 +11,7 @@ int procfs_read(pid_t pid,
 
 int64_t procfs_now_ns(void);
 
+int procfs_cpu_count(void);
+double procfs_host_cpu_percent(void);
+
 #endif
