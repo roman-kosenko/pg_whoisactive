@@ -1,7 +1,7 @@
 CC = gcc
 
 # Единый источник версии приложения
-VERSION = 1.3.1
+VERSION = 1.3.2
 
 CFLAGS = -std=c17 -O2 -Wall -Wextra -pedantic -DVERSION=\"$(VERSION)\"
 
@@ -53,6 +53,7 @@ deb: $(TARGET)
 	@echo "Copying binary executable..."
 	cp $(TARGET) /tmp/$(PKG_DIR)/usr/bin/
 	chmod 755 /tmp/$(PKG_DIR)/usr/bin/$(TARGET)
+	ln -s $(TARGET) /tmp/$(PKG_DIR)/usr/bin/pgwa
 	
 	@echo "Generating control file..."
 	@echo "Package: $(PKG_NAME)" > /tmp/$(PKG_DIR)/DEBIAN/control
