@@ -31,4 +31,4 @@ Selected session details
 SQL for the selected PID
 XACT AGE vs QUERY AGE
 Cancel session
-Terminate session
+Terminate session.
