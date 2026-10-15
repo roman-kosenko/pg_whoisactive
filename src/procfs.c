@@ -8,16 +8,16 @@
 
 #include "procfs.h"
 
-#define PROC_PATH_LEN 128
+#define PROC_PATH_LEN 256
 
 static char *find_comm_end(char *buf)
 {
     char *end = NULL;
     for (char *p = buf; *p; p++)
     {
-        if (*p != ')') continue;
-        if (p[1] != ' ') continue;
-        if (strchr("RSDZTWXIKP", p[2])) end = p;
+        if (*p == ')') {
+            end = p;
+        }
     }
     return end;
 }
@@ -29,20 +29,24 @@ int64_t procfs_now_ns(void)
     return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
 }
 
-int procfs_read(pid_t pid, uint64_t *cpu_ticks, uint64_t *rss_kb, uint64_t *read_bytes, uint64_t *write_bytes)
+int procfs_read_v2(pid_t pid, pid_t leader_pid, uint64_t *cpu_ticks, uint64_t *rss_kb, uint64_t *read_bytes, uint64_t *write_bytes)
 {
+    (void)leader_pid; /* не используем — воркеры это отдельные процессы */
+
     char path[PROC_PATH_LEN];
     char buf[8192];
     FILE *f;
 
+    /* CPU ticks — всегда по собственному PID */
     snprintf(path, sizeof(path), "/proc/%d/stat", (int)pid);
+
     f = fopen(path, "r");
     if (!f) return -1;
     if (!fgets(buf, sizeof(buf), f)) { fclose(f); return -1; }
     fclose(f);
 
     char *end = find_comm_end(buf);
-    if (!end) return -1;
+    if (!end || end[1] != ' ') return -1;
 
     char *save = NULL;
     char *tok = strtok_r(end + 2, " \t", &save);
@@ -60,6 +64,7 @@ int procfs_read(pid_t pid, uint64_t *cpu_ticks, uint64_t *rss_kb, uint64_t *read
     if (!found_utime || !found_stime) return -1;
     *cpu_ticks = utime + stime;
 
+    /* RSS — по собственному PID */
     snprintf(path, sizeof(path), "/proc/%d/status", (int)pid);
     f = fopen(path, "r");
     if (!f) return -1;
@@ -73,16 +78,23 @@ int procfs_read(pid_t pid, uint64_t *cpu_ticks, uint64_t *rss_kb, uint64_t *read
     }
     fclose(f);
 
+    /* IO — по собственному PID */
     snprintf(path, sizeof(path), "/proc/%d/io", (int)pid);
     f = fopen(path, "r");
-    if (!f) { *read_bytes = 0; *write_bytes = 0; return 0; }
-    *read_bytes = 0; *write_bytes = 0;
+    if (!f) {
+        *read_bytes = 0;
+        *write_bytes = 0;
+        return 0;
+    }
+    *read_bytes = 0;
+    *write_bytes = 0;
     while (fgets(buf, sizeof(buf), f))
     {
         sscanf(buf, "read_bytes: %" SCNu64, read_bytes);
         sscanf(buf, "write_bytes: %" SCNu64, write_bytes);
     }
     fclose(f);
+
     return 0;
 }
 

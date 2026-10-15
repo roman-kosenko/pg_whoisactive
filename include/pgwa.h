@@ -26,6 +26,7 @@ typedef enum
 typedef struct
 {
     pid_t pid;
+    pid_t leader_pid; // <--- ДОБАВЛЕНО: Связь воркера с лидер-сессией из pg_stat_activity
 
     char user[PGWA_MAX_USER];
     char host[PGWA_MAX_HOST];
@@ -37,17 +38,12 @@ typedef struct
 
     char state[32]; 
 
-    /*
-     * Timestamp of the current/last query as reported
-     * by pg_stat_activity.query_start.
-     */
     char query_start[PGWA_MAX_STARTED];
-
     char query[PGWA_MAX_QUERY];
 
     double runtime_sec; 
-    double xact_age_sec;  // Новое поле: возраст текущей транзакции
-    double query_age_sec; // Новое поле: возраст текущего запроса
+    double xact_age_sec;  
+    double query_age_sec; 
 
     uint64_t cpu_ms;
     double cpu_pct;
@@ -74,13 +70,10 @@ typedef struct
 typedef struct
 {
     pid_t pid;
-
     uint64_t cpu_ticks;
     uint64_t read_bytes;
     uint64_t write_bytes;
-
     int64_t sample_time_ms;
-
 } pgwa_proc_sample;
 
 #endif

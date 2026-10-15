@@ -3,7 +3,8 @@
 
 #include "pgwa.h"
 
-int procfs_read(pid_t pid,
+int procfs_read_v2(pid_t pid,
+                pid_t leader_pid,
                 uint64_t *cpu_ticks,
                 uint64_t *rss_kb,
                 uint64_t *read_bytes,

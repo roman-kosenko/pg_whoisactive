@@ -62,11 +62,9 @@ int postgres_read_activity(pgwa_pg_connection *pg, pgwa_session *sessions, int m
     if (pg == NULL || pg->conn == NULL || sessions == NULL || session_count == NULL || max_sessions <= 0) return -1;
     conn = (PGconn *)pg->conn;
 
-    // Инициализация полей Autovacuum дефолтными значениями на случай сбоя
     pg->av_active = 0;
     pg->av_max = 3;
 
-    // Объединенный быстрый запрос с автоматическим вычитанием собственных транзакций монитора
     PGresult *res_stats = PQexec(conn, 
         "SELECT "
         "  ( (SELECT COALESCE(SUM(xact_commit + xact_rollback), 0) FROM pg_stat_database WHERE datname NOT IN ('template0','template1')) "
@@ -79,12 +77,11 @@ int postgres_read_activity(pgwa_pg_connection *pg, pgwa_session *sessions, int m
         pg->total_xacts = strtoull(PQgetvalue(res_stats, 0, 0), NULL, 10);
         pg->av_active   = atoi(PQgetvalue(res_stats, 0, 1));
         pg->av_max      = atoi(PQgetvalue(res_stats, 0, 2));
-        
-        if (pg->av_max <= 0) pg->av_max = 1; // Защита от деления на ноль
+        if (pg->av_max <= 0) pg->av_max = 1;
     }
     PQclear(res_stats);
 
-    // В запрос добавлены xact_age_sec и query_age_sec (поля 12 и 13)
+    // Изменение: backend_type IN ('client backend', 'parallel worker') и выборка leader_pid (поле 14)
     const char *sql =
         "SELECT pid, COALESCE(usename, ''), COALESCE(client_addr::text, ''), COALESCE(datname, ''), "
         "COALESCE(application_name, ''), COALESCE(state, ''), COALESCE(wait_event_type, ''), COALESCE(wait_event, ''), "
@@ -93,8 +90,9 @@ int postgres_read_activity(pgwa_pg_connection *pg, pgwa_session *sessions, int m
         "COALESCE(to_char(query_start, 'YYYY-MM-DD HH24:MI:SS'), ''), COALESCE(query, ''), "
         "COALESCE(array_to_string(pg_blocking_pids(pid), ','), ''), "
         "CASE WHEN xact_start IS NOT NULL THEN COALESCE(EXTRACT(EPOCH FROM (clock_timestamp() - xact_start)), 0) ELSE 0 END, "
-        "CASE WHEN query_start IS NOT NULL THEN COALESCE(EXTRACT(EPOCH FROM (clock_timestamp() - query_start)), 0) ELSE 0 END "
-        "FROM pg_stat_activity WHERE backend_type = 'client backend' AND pid <> pg_backend_pid() "
+        "CASE WHEN query_start IS NOT NULL THEN COALESCE(EXTRACT(EPOCH FROM (clock_timestamp() - query_start)), 0) ELSE 0 END, "
+        "COALESCE(leader_pid, 0) "
+        "FROM pg_stat_activity WHERE backend_type IN ('client backend', 'parallel worker') AND pid <> pg_backend_pid() "
         "ORDER BY CASE WHEN state = 'active' THEN 0 ELSE 1 END, query_start NULLS LAST";
 
     res = PQexec(conn, sql);
@@ -135,9 +133,9 @@ int postgres_read_activity(pgwa_pg_connection *pg, pgwa_session *sessions, int m
             }
         }
 
-        // Парсинг возраста транзакции и запроса из ответов базы данных
         s->xact_age_sec = strtod(PQgetvalue(res, i, 12), NULL);
         s->query_age_sec = strtod(PQgetvalue(res, i, 13), NULL);
+        s->leader_pid = (pid_t)strtol(PQgetvalue(res, i, 14), NULL, 10); // Чтение leader_pid
     }
     PQclear(res); *session_count = rows; return 0;
 }
