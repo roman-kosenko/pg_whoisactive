@@ -60,7 +60,7 @@ Starts a continuously refreshing ncurses interface. Sessions are color-coded to 
 | `r` | Sort by read rate |
 | `w` | Sort by write rate |
 | `p` | Sort by PID |
-| `f` | Filter by user |
+| `f` | Filter  0:All  1:Active  2:Locks  3:User |
 | `k` | Cancel or terminate the selected session, according to the implemented action; for a parallel worker, acts on its leader |
 | Space | Pause / resume refresh |
 | PgUp / PgDn | Scroll the query panel |
