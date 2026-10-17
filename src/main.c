@@ -30,6 +30,8 @@ static void print_usage(const char *program)
     printf(
         "pg_whoisactive — tool for finding and diagnosing PostgreSQL problems\n"
         "\n"
+        "Requires: PostgreSQL 13+, Linux (/proc), libpq, ncurses\n"
+        "\n"
         "Usage:\n"
         "  %s [port] [options]\n"
         "  pgwa [port] [options]          (symlink created by the package installer)\n"

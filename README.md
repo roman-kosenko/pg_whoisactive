@@ -165,6 +165,9 @@ Colors provide a quick visual cue; use the session state, wait event, and query 
 - The specified PostgreSQL port must be available if connecting to a non-default instance.
 - Permission to read the `/proc` information of PostgreSQL backend processes is required for CPU, I/O, and memory metrics.
 - Running as the operating-system `postgres` user is recommended for local socket authentication without a password, provided PostgreSQL authentication rules permit it.
+- PostgreSQL 13 or later
+- Linux with /proc filesystem
+- libpq and ncurses
 
 ## Typical investigation workflow
 

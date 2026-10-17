@@ -5,7 +5,7 @@
 CC = gcc
 
 # App version single source
-VERSION = 1.3.8
+VERSION = 1.3.9
 
 CFLAGS = -std=c17 -O2 -Wall -Wextra -pedantic -DVERSION=\"$(VERSION)\"
 
