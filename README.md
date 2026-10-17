@@ -6,6 +6,9 @@
 
 It helps DBAs investigate production incidents by showing server load, PostgreSQL activity, session-level CPU and memory usage, I/O rates, query execution time, and blocking relationships — all in one terminal interface.
 
+Author: Roman Kosenko
+GitHub: https://github.com/roman-kosenko
+
 ## Features
 
 ### Server overview
@@ -173,3 +176,23 @@ Colors provide a quick visual cue; use the session state, wait event, and query 
 6. **Take action carefully.** Cancel or terminate a session only after assessing its role and impact.
 
 `pg_whoisactive` is an investigation aid: it brings important diagnostic signals together in one place so that DBAs can quickly decide where to look next.
+
+## Third-party libraries
+
+This project uses the following third-party libraries:
+
+libpq — PostgreSQL License
+
+ncurses — primarily distributed under an MIT/X11-style license
+
+These libraries are subject to their respective licenses. Their copyright notices and license terms remain applicable.
+
+## Author and copyright
+
+Copyright (c) 2026 Roman Kosenko.
+
+## License
+
+pg_whoisactive is licensed under the GNU General Public License v3.0 (GPL-3.0).
+
+See the LICENSE file for the full license text.
