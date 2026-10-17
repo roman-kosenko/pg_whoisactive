@@ -26,7 +26,7 @@ typedef enum
 typedef struct
 {
     pid_t pid;
-    pid_t leader_pid; // <--- ДОБАВЛЕНО: Связь воркера с лидер-сессией из pg_stat_activity
+    pid_t leader_pid; // <--- ADDED: Mapping worker to leader session from pg_stat_activity
 
     char user[PGWA_MAX_USER];
     char host[PGWA_MAX_HOST];

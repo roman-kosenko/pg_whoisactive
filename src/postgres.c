@@ -81,7 +81,7 @@ int postgres_read_activity(pgwa_pg_connection *pg, pgwa_session *sessions, int m
     }
     PQclear(res_stats);
 
-    // Изменение: backend_type IN ('client backend', 'parallel worker') и выборка leader_pid (поле 14)
+    // backend_type IN ('client backend', 'parallel worker') 
     const char *sql =
         "SELECT pid, COALESCE(usename, ''), COALESCE(client_addr::text, ''), COALESCE(datname, ''), "
         "COALESCE(application_name, ''), COALESCE(state, ''), COALESCE(wait_event_type, ''), COALESCE(wait_event, ''), "
@@ -135,7 +135,7 @@ int postgres_read_activity(pgwa_pg_connection *pg, pgwa_session *sessions, int m
 
         s->xact_age_sec = strtod(PQgetvalue(res, i, 12), NULL);
         s->query_age_sec = strtod(PQgetvalue(res, i, 13), NULL);
-        s->leader_pid = (pid_t)strtol(PQgetvalue(res, i, 14), NULL, 10); // Чтение leader_pid
+        s->leader_pid = (pid_t)strtol(PQgetvalue(res, i, 14), NULL, 10); //leader_pid
     }
     PQclear(res); *session_count = rows; return 0;
 }

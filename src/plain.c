@@ -165,7 +165,7 @@ void plain_run(const char *port)
         for (int i = 0; i < session_count; i++)
         {
             pgwa_session *s = &sessions[i];
-            if (s->leader_pid != 0) continue; // Обрабатываем воркеров вложенно
+            if (s->leader_pid != 0) continue; 
 
             printf("%-6d %-10.10s %-8.8s %5llu ", (int)s->pid, s->user, s->database, (unsigned long long)s->cpu_ms);
             print_rate(s->read_per_sec); putchar(' ');
@@ -180,11 +180,11 @@ void plain_run(const char *port)
             print_query(s->query); 
             putchar('\n');
 
-            // Вывод parallel workers
+            // parallel workers
             for (int j = 0; j < session_count; j++) {
                 if (sessions[j].leader_pid == s->pid) {
                     pgwa_session *w = &sessions[j];
-                    /* Префикс ровно 6 символов, как у обычного PID */
+                    
                     printf("└─%-4d %-10s %-8s %5llu ", (int)w->pid, "worker", "", (unsigned long long)w->cpu_ms);
                     print_rate(w->read_per_sec); putchar(' ');
                     print_rate(w->write_per_sec); putchar(' ');
@@ -203,7 +203,7 @@ void plain_snapshot(const char *port)
     pgwa_pg_connection pg = {0}; int session_count = 0;
     if (postgres_connect(&pg, port) != 0) { fprintf(stderr, "Cannot connect to PostgreSQL\n"); return; }
 
-    /* Первый сэмпл — только чтобы заполнить кэш метрик */
+    /* First sample — just to populate the metrics cache */
     if (postgres_read_activity(&pg, sessions, PGWA_MAX_ROWS, &session_count) != 0) {
         postgres_disconnect(&pg);
         return;
@@ -211,7 +211,7 @@ void plain_snapshot(const char *port)
     metrics_update(sessions, session_count);
     metrics_update_tps(pg.total_xacts);
 
-    /* Ждём ~1 с и снимаем второй сэмпл — теперь будут дельты */
+    /* Wait ~1s and take the second sample — now with deltas*/
     sleep(1);
 
     if (postgres_read_activity(&pg, sessions, PGWA_MAX_ROWS, &session_count) != 0) {

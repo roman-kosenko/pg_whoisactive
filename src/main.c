@@ -80,13 +80,13 @@ static void print_usage(const char *program)
 
 int main(int argc, char **argv)
 {
-    // МГНОВЕННЫЙ ПЕРЕХВАТ: Проверяем флаги версии до любого анализа портов и режимов
+    
     for (int i = 1; i < argc; i++)
     {
         if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-v") == 0)
         {
             printf("pg_whoisactive v:%s\n", VERSION);
-            return 0; // Чистый выход с кодом 0, как требует задача
+            return 0; 
         }
     }
 
@@ -94,7 +94,7 @@ int main(int argc, char **argv)
     int snapshot_mode = 0;
     const char *port = NULL;
 
-    // Основной цикл обработки рабочих параметров (порт, plain-режим)
+    // Main processing loop for operating parameters (port, plain mode)
     for (int i = 1; i < argc; i++)
     {
         if (strcmp(argv[i], "--plain") == 0)

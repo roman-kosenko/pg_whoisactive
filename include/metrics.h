@@ -3,14 +3,14 @@
 
 #include "pgwa.h"
 
-/* Структура для хранения одной точки истории транзакций в кольцевом буфере */
+/*Structure to store a single transaction history snapshot in a circular buffer*/
 typedef struct {
     uint64_t total_xacts;
     int64_t time_ns;
     int valid;
 } tps_history_point;
 
-/* Глобальная структура для передачи метрик CPU в UI */
+/* Global structure for passing CPU metrics to the UI */
 typedef struct {
     double host_cpu_pct;
     double pg_cpu_pct;

@@ -1,6 +1,6 @@
 CC = gcc
 
-# Единый источник версии приложения
+# App version single source
 VERSION = 1.3.7
 
 CFLAGS = -std=c17 -O2 -Wall -Wextra -pedantic -DVERSION=\"$(VERSION)\"

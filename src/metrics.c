@@ -85,7 +85,7 @@ void metrics_update(pgwa_session *sessions, int session_count)
         s->rss_kb = rss;
         metrics_cache *c = find_slot(s->pid);
 
-        /* Первый сэмпл или сброс счётчиков — сохраняем базу, показываем 0 */
+        /* First sample or counter reset — save baseline, display 0 */
         if (c->sample_time_ns == 0 || ticks < c->cpu_ticks || rd < c->read_bytes || wr < c->write_bytes || now <= c->sample_time_ns)
         {
             c->cpu_ticks = ticks; c->read_bytes = rd; c->write_bytes = wr;
@@ -104,7 +104,7 @@ void metrics_update(pgwa_session *sessions, int session_count)
         const uint64_t read_delta = rd - c->read_bytes;
         const uint64_t write_delta = wr - c->write_bytes;
 
-        /* CPUms — сколько миллисекунд CPU процесс съел за интервал */
+        /* CPUms — CPU milliseconds consumed by the process during the interval */
         s->cpu_ms = (cpu_delta * 1000ULL) / (uint64_t)hz;
 
         const int64_t elapsed_ns = now - c->sample_time_ns;

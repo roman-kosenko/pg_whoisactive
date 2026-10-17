@@ -220,7 +220,7 @@ static int draw_tree_node(int y, int max_y, pid_t pid, int depth, pid_t *visited
     attrset(COLOR_PAIR(COLOR_PAIR_DEFAULT));
     move(y, 0);
 
-    /* Отступ и префикс как у воркеров */
+    
     for (int i = 0; i < depth; i++) printw("  ");
     if (depth > 0) {
         printw("└─");
@@ -339,7 +339,7 @@ static void draw_session_row(int y, int row, int width) {
     int pair = COLOR_PAIR_DEFAULT; int is_lock = 0;
 
     if (dr->type == ROW_PARALLEL_WORKER) {
-        pair = COLOR_PAIR_ACTIVE;   /* тот же цвет, что у комментариев */
+        pair = COLOR_PAIR_ACTIVE;   
     } else {
         if (strstr(s->state, "aborted") != NULL) pair = COLOR_PAIR_ABORTED;
         else if (strstr(s->wait_type, "Lock") != NULL || s->blocker_pid > 0) { pair = COLOR_PAIR_LOCK; is_lock = 1; }
@@ -548,7 +548,7 @@ static void handle_kill_menu(int width, int height, pgwa_pg_connection *pg) {
     int is_worker = (dr->type == ROW_PARALLEL_WORKER);
 
     if (is_worker && dr->leader_pid > 0) {
-        target_pid = dr->leader_pid;   /* киляем лидера, а не воркера */
+        target_pid = dr->leader_pid;   /* Kill the leader instead of the worker */
     }
 
     timeout(-1); attrset(COLOR_PAIR(COLOR_PAIR_ABORTED)); attron(A_BOLD);
@@ -616,9 +616,9 @@ void ui_run(const char *port) {
         init_pair(COLOR_PAIR_LOCK,     COLOR_YELLOW,  COLOR_BLACK);
         init_pair(COLOR_PAIR_BLUE,     COLOR_CYAN,    COLOR_BLACK);
         init_pair(COLOR_PAIR_SELECTED, COLOR_BLACK,   COLOR_CYAN);
-        /* Попробуем более светлый зелёный для воркеров */
+        
         if (COLORS >= 16) {
-            init_color(COLOR_GREEN + 8, 300, 1000, 300);  /* светлее стандартного зелёного */
+            init_color(COLOR_GREEN + 8, 300, 1000, 300);  
             init_pair(COLOR_PAIR_WORKER, COLOR_GREEN + 8, COLOR_BLACK);
         } else {
             init_pair(COLOR_PAIR_WORKER, COLOR_GREEN, COLOR_BLACK);

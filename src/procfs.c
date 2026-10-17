@@ -31,13 +31,13 @@ int64_t procfs_now_ns(void)
 
 int procfs_read_v2(pid_t pid, pid_t leader_pid, uint64_t *cpu_ticks, uint64_t *rss_kb, uint64_t *read_bytes, uint64_t *write_bytes)
 {
-    (void)leader_pid; /* не используем — воркеры это отдельные процессы */
+    (void)leader_pid; 
 
     char path[PROC_PATH_LEN];
     char buf[8192];
     FILE *f;
 
-    /* CPU ticks — всегда по собственному PID */
+    /* CPU ticks */
     snprintf(path, sizeof(path), "/proc/%d/stat", (int)pid);
 
     f = fopen(path, "r");
@@ -64,7 +64,7 @@ int procfs_read_v2(pid_t pid, pid_t leader_pid, uint64_t *cpu_ticks, uint64_t *r
     if (!found_utime || !found_stime) return -1;
     *cpu_ticks = utime + stime;
 
-    /* RSS — по собственному PID */
+    /* RSS  */
     snprintf(path, sizeof(path), "/proc/%d/status", (int)pid);
     f = fopen(path, "r");
     if (!f) return -1;
@@ -78,7 +78,7 @@ int procfs_read_v2(pid_t pid, pid_t leader_pid, uint64_t *cpu_ticks, uint64_t *r
     }
     fclose(f);
 
-    /* IO — по собственному PID */
+    /* IO */
     snprintf(path, sizeof(path), "/proc/%d/io", (int)pid);
     f = fopen(path, "r");
     if (!f) {
