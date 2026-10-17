@@ -1,3 +1,7 @@
+# pg_whoisactive (pgwa)
+# Copyright (C) 2026 Roman Kosenko
+# Licensed under GPL-3.0. See LICENSE file.
+
 CC = gcc
 
 # App version single source
