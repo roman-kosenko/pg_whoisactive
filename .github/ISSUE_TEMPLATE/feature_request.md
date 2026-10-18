@@ -1,20 +1,36 @@
 ---
 name: Feature request
 about: Suggest an idea for this project
-title: ''
+title: "[Feature]:"
 labels: ''
 assignees: ''
+type: Feature
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## Feature description
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+A clear and concise description of the feature you would like to see.
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+## Problem or use case
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+What problem are you trying to solve? Describe the PostgreSQL troubleshooting or monitoring scenario where this feature would be useful.
+
+## Proposed solution
+
+Describe how you would like the feature to work, if you have an idea.
+
+## Alternatives considered
+
+How do you currently solve this problem? Have you tried other tools or workarounds?
+
+## Additional context
+
+Add any examples, screenshots, command output, or other information that may help explain the request.
+
+## Willingness to test
+
+Would you be willing to test this feature in a future release and provide feedback?
+
+- [ ] Yes
+- [ ] No
