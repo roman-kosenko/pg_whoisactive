@@ -66,7 +66,7 @@ deb: $(TARGET)
 	@echo "Priority: optional" >> /tmp/$(PKG_DIR)/DEBIAN/control
 	@echo "Architecture: $(PKG_ARCH)" >> /tmp/$(PKG_DIR)/DEBIAN/control
 	@echo "Depends: libpq5, libncursesw6, libtinfo6" >> /tmp/$(PKG_DIR)/DEBIAN/control
-	@echo "Maintainer: Development Team <info@pg_whoisactive.org>" >> /tmp/$(PKG_DIR)/DEBIAN/control
+	@echo "Maintainer: Development Team <pg_whoisactive@protonmail.com>" >> /tmp/$(PKG_DIR)/DEBIAN/control
 	@echo "Description: Advanced PostgreSQL session monitor with real-time process metrics." >> /tmp/$(PKG_DIR)/DEBIAN/control
 	
 	@echo "Building the package using dpkg-deb..."
