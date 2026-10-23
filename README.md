@@ -8,6 +8,7 @@ It helps DBAs investigate production incidents by showing server load, PostgreSQ
 
 Author: Roman Kosenko
 GitHub: https://github.com/roman-kosenko
+![pg_whoisactive demo](https://github.com/roman-kosenko/pg_whoisactive/releases/download/v1.3.9/pgwa_demo.gif)
 
 ## Features
 
